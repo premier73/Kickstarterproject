@@ -1,0 +1,358 @@
+<br />
+
+![](./goodreads.png)
+<br />
+
+
+---
+title:  "Goodreads Books Data Analysis"
+author: "Siwei WANG"
+date:"10/01/2020"
+output:  
+  html_document:
+        toc: yes
+        theme: spacelab
+        highlight: tango
+        df_print: paged
+        code_folding: hide
+---
+
+
+
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+This dataset is from [Kaggle](https://www.kaggle.com/jealousleopard/goodreadsbooks). It was entirely scraped via the [Goodreads API](https://www.goodreads.com/api)'s database. The kaggple page creator says that the intention to creat this dataset is to have a clear idea about the books recommendation judging by the number. 
+
+According to Wikipedia, Goodreads is a social cataloging website that allows individuals to freely search its database of books, annotations, and reviews. Users can sign up and register books to generate library catalogs and reading lists. They can also create their own groups of book suggestions, surveys, polls, blogs, and discussions. The website's offices are located in San Francisco. The company is owned by the online retailer Amazon. On July 23, 2013, Goodreads announced on their website their user base had grown to 20 million members, having doubled in close to 11 months.
+
+As one of the world’s most influential reading sites, Goodreads provides a platform for people interested in talking about books. This goodreads data sets contains all the listed books on GoodRead books platform. It contains the books basic infromation, the rating and reviews count. The dataset was updated in 2019 and also it is totally tidy and clean.
+
+Personally, I would like to use this dataset as a reference to make my own reading list.
+
+**Here are some questions that I want to find out the answer by analyzing the dataset:**
+
+- Who is the most productive writer?
+
+- Which book has the most pages?
+
+- Which book has the highest rating?
+
+- Which book people discuss about mostly?
+
+- Is there any connection bewteen the number of books writing and the average rating of book? In other words, is it true that the more books writer writes, the higher average rating he or she owns? Or is there any other factors which can affect the ratings?
+
+
+
+
+```{r packages, include=FALSE,echo=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(ggthemes)
+library(DT)
+library(wordcloud2)
+library(plotly)
+library(knitr)
+library("gridExtra")
+library("DataExplorer")
+```
+
+---
+
+# Analysis {.tabset .tabset-fade} 
+
+
+The first thing I need to do is import data and have a total view of the whole dataset. Though the dataset is very clean, there are still some parts need to be adjusted. As a result, I delete the irrelevant columns and change the columns names.  
+
+(In order to make the report more clean, I use comments inside the code part to explain every steps instead of putting them in the content.)
+
+
+```{r preparation, include=FALSE, echo=FALSE}
+
+BKdata <- read.csv("books.csv",fileEncoding="utf8")
+str(BKdata)
+
+# After having a general view of the dataset, I find out that there are several columns irrelevant like bookID, isbn13. Also, the column names are not quite clear and suitable, so I need to make some change.
+
+BKdata <- BKdata %>% select(-bookID, -isbn13)
+
+#Transforming factors into numeric
+BKdata$average_rating <- as.numeric(levels(BKdata$average_rating))[BKdata$average_rating]
+BKdata$X..num_pages <- as.numeric(levels(BKdata$X..num_pages))[BKdata$X..num_pages]
+   
+#Transforming factors into character
+BKdata$title <- as.character(levels(BKdata$title))[BKdata$title]
+
+# Change column name
+colnames(BKdata)[1] <- 'Book Names'
+colnames(BKdata)[2] <- 'Authors'
+colnames(BKdata)[3] <- 'Average Rating'
+colnames(BKdata)[4] <- 'ISBN'
+colnames(BKdata)[5] <- 'Language Code'
+colnames(BKdata)[6] <- 'Page Number'
+colnames(BKdata)[7] <- 'Ratings Count'
+colnames(BKdata)[8] <- 'Text Review Count'
+
+# Delete NA value
+BKdata <- na.omit(BKdata)
+
+
+```
+
+
+
+<br />
+**Here is the result(only shows 150 lines):**
+
+
+
+```{r table,echo=FALSE, warning=FALSE, message=FALSE}
+datatable(head(BKdata,150), options=list(pageLength = 10))
+
+```
+
+
+<br />
+
+
+<div align=center> ![](./banner1.png) </div>
+
+
+## Writer Ranking
+
+
+### Top 20 Productive Writers
+
+<br />
+
+Ranking by the number of books the authors have published.
+
+
+As we can see from the graph, the number one most productive writer is **Agatha Christie**, whose books are **69** included. Then no.2 is **Stephen King**. Both of them are my favorite writers, but I never have enough time to finish all of their masterpieces.
+
+The top 20 writhers have written over 25 books each. However, there are still more normal authors than popular authors, which means more than half of the writers from this dataset have written only 1 or 2 books. 
+
+<br />
+```{r top, echo=FALSE, warning=FALSE, message=FALSE}
+#top 20 authors who write most books
+wrrank<-BKdata %>%
+  group_by(Authors) %>%
+  summarize(count = length(Authors)) %>%
+  arrange(desc(count)) %>%
+  top_n(20) %>%
+  ggplot(aes(x = reorder(Authors, count), y = count)) + geom_col(fill = "#7e6752",alpha=0.8) +
+  labs(X="Authors", y = "Number of Books") +
+  ggtitle("Top 20 Most Productive Authors")+
+  coord_flip()+
+  theme(legend.position = "none")
+ggplotly(wrrank)
+
+# I would like to consider those authors who have written more than 3 books as popular writers, the others who have written less than 3 books as normal writers.
+
+# Next step is to classify authors into two type in order to visualize it.
+Authors<-BKdata %>%
+  group_by(Authors) %>%
+  summarize(count = length(Authors))
+Authors<- Authors %>% mutate(
+  Categoricalauthor = case_when(
+    count >= 3 ~ 'Popular Author',
+    count <= 2 ~ 'Normal Author') )
+BKdata<-inner_join(BKdata,Authors,by=c("Authors","Authors"))
+a2<- BKdata %>% ggplot(aes(x=factor(Categoricalauthor)))+geom_bar(fill = "#61b292" ,alpha=0.7)+
+  ggtitle("Categorical Author")+xlab("Author")+coord_flip()
+a2
+
+```
+
+
+
+
+
+
+## Book Pages
+
+
+### Top 10 Longest Books
+
+
+<br />
+```{r page, echo=FALSE, warning=FALSE, message=FALSE}
+# page number distribution
+
+
+bkpage <- BKdata %>%
+  filter(`Page Number`>=30) %>% 
+  group_by(`Book Names`) %>%
+  arrange(desc(`Page Number`)) %>%
+  head(n=10) %>% select("Book Names","Authors","Page Number")
+datatable(bkpage, options = list(pageLength = 5)) %>% formatStyle("Book Names",backgroundColor = "#ff7676")
+
+np<-BKdata %>% ggplot(aes(x=log1p(`Page Number`))) + geom_density(fill='#61b292')+ ggtitle('Page Number Destribution')
+np 
+
+# Drop page numbers= 0 records.
+BKdata <- BKdata %>% filter(BKdata$`Page Number`>30)
+BKdata$`Page Number` %>% summary
+
+
+
+
+```
+
+
+
+
+
+
+## Book Rating
+
+
+### Top 10 Highest Rating Books
+
+<br />
+
+Some ratings are not included due to their low rating count. Only the book which owns more than 10 ratings can be considered. 
+
+<br />
+```{r rating, echo=FALSE, warning=FALSE, message=FALSE}
+
+# First, present the top 10 high rating book names. 
+
+
+highrating <- BKdata %>%
+  filter(`Ratings Count`>=10) %>% 
+  group_by(`Book Names`) %>%
+  arrange(desc(`Average Rating`)) %>%
+  head(n=10) %>% select("Book Names","Authors","Average Rating")
+
+datatable(highrating, options = list(pageLength = 5)) %>% formatStyle("Book Names",backgroundColor = "#f4eec0")
+
+
+averating<-BKdata %>% ggplot(aes(x=`Average Rating`)) + geom_density(fill='#466c95',alpha=0.7)+ ggtitle('Average Ratingr Destribution')+geom_vline(aes(xintercept=round(mean(`Average Rating`,2))), linetype='dashed')+geom_text(aes(x=4, y=1, label='mean'), size=3)
+averating
+
+BKdata$`Average Rating` %>% summary
+
+```
+
+
+
+
+## Reviews
+
+
+### Top 10 Hot Topic Books
+
+<br />
+
+```{r review, echo=FALSE, warning=FALSE, message=FALSE}
+
+
+highrating <- BKdata %>%
+  group_by(`Book Names`) %>%
+  arrange(desc(`Text Review Count`)) %>%
+  head(n=10) %>% select("Book Names","Authors","Text Review Count")
+
+datatable(highrating, options = list(pageLength = 5)) %>% formatStyle("Book Names",backgroundColor = "#61b292")
+
+
+
+# Category text review into 3 parts: few discussion(<40), normal discussion(40~300) and lots discussion(>300).
+BKdata<- BKdata %>% mutate(
+  ReviewCount= case_when(
+    BKdata$`Text Review Count` < 40 ~ 'Few Discussion',
+    BKdata$`Text Review Count`>= 40 & BKdata$`Text Review Count` <=300 ~ 'Normal Discussion',
+   BKdata$`Text Review Count`> 300 ~ 'Lots Discussion',
+    TRUE ~ 'unknown'
+  )
+)
+
+
+BKdata$ReviewCount <- factor(BKdata$ReviewCount, levels = c('Few Discussion','Normal Discussion','Lots Discussion'))
+RC<-BKdata %>%
+  group_by(ReviewCount) %>%
+  summarize(count = length(ReviewCount)) %>%
+  ggplot(aes(x = ReviewCount, y = count)) + geom_col(fill = "#7e6752", alpha=0.7) + 
+  geom_text(aes(label = count,vjust=-0.2))+
+  ggtitle("Categorital Text Review")
+RC
+BKdata$ReviewCount %>% table
+
+```
+
+
+
+## Relevance
+
+
+### Correlation Analysis
+
+<br />
+
+In order to analyze the relevance between indenpendent variables and dependant variables, the tool I need is the correlation matrix. As a result, I use the DataExplorer package to present it.
+
+<br />
+```{r matrix, echo=FALSE, warning=FALSE, message=FALSE}
+
+
+factors <- data_frame(BKdata$`Average Rating`,BKdata$`Ratings Count`,BKdata$Categoricalauthor, BKdata$`Page Number`,BKdata$`Language Code`,BKdata$`Text Review Count`)
+plot_correlation(factors)
+
+```
+
+
+As it shows on the matrix, the **Page Number** and the **Ratings Count** have 0.86 positive correlation, which means the book which owns more pages can have more ratings, or people would be more likely to rate thick books. Besides, the **Page Number** is also connected to the **Average Rating**, the correlation equals to 0.18, which is still more than 0.05. It proves that people tend to give higher score to the books which have more pages. The author's reputaion also influence a little bit about the average rating (correlation coeffience is 0.07 & -0.07, which is not in the range of 95%), however, it is not as significant as other two factors.
+
+
+
+
+# --- 
+
+<div align=center> ![](./banner2.png) </div>
+
+---
+
+<br />
+
+# Conclusion
+
+
+
+
+<br />
+
+<div align=center>
+```{r word, echo=FALSE}
+wordsTable <- data.frame(table(BKdata$Authors),row.names = NULL)
+wordsTable <- wordsTable[order(wordsTable[,2],decreasing = T),] 
+wordcloud2(wordsTable,minRotation = -pi/6, maxRotation = -pi/6,rotateRatio = 1)
+
+```
+</div>
+
+## Data helps us learn more about the popularity of books and writers.
+
+Analysing the dataset from one of the most biggest reading website makes us have a clear thought about the books and writers.
+
+We discussed the factors which influence the average ratings of books on Goodreads. People love talking about river novels, espacially high rating ones. There are interactions among the books' pages number, books rating scores and the number of review writing. 
+
+
+
+<br />
+
+## Will you choose books and writers by popularity?
+
+Like I mentioned before, I want to make my own reading list according to the data statement. I will try to read some books of the top 10 writers whom I didn't know before, however, I still think that choosing books always relies on personal tastes. How about you, will you try to read some books after reading this report?
+
+
+Thanks for reading and keep on reading!
+
+
+<br />
+

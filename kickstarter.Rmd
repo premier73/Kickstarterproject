@@ -1,0 +1,241 @@
+
+  
+  
+---
+title: "Kickstarter state from 2009 to 2018"
+author: "Siwei WANG"
+date: "20/04/2019"
+output: html_document
+---
+
+<br/>  
+  
+![ ](http://m.qpic.cn/psb?/V14GfakW1du8PG/voz55t4iARJj1xJSdZWIYXiqTEliXa.cIQC9VtJ*Wec!/b/dPMAAAAAAAAA&bo=bQSoAAAAAAADF*M!&rf=viewer_4&t=5)
+
+<br />
+
+
+***  
+
+<br/>  
+  
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## I. Data Source
+
+
+#### First of all, Kaggle.com provides the data. Here is [the link](https://www.kaggle.com/kemical/kickstarter-projects) of the original page.  
+   
+     
+<br/>
+     
+***
+
+
+##  II. Introduction
+
+“Kickstarter is an enormous global community built around creativity and creative projects. Over 10 million people, from every continent on earth, have backed a Kickstarter project. Some of those projects come from influential artists like De La Soul or Marina Abramović. Most come from amazing creative people you probably haven’t heard of — from Grandma Pearl to indie filmmakers to the band down the street. Every artist, filmmaker, designer, developer, and creator on Kickstarter has complete creative control over their work — and the opportunity to share it with a vibrant community of backers.”  
+  
+This is the brief self-introduction from Kickstarter official website. I got to know their website because of some independent video games which are made by individuals or small studios who were lack of funding and finally published their games after they had used Kickstarter to gain enough money. Since it became more and more popular, there are several questions I think people might be interested in:  
+  
+1.	How many projects exist on Kickstarter? What’s the main categories and the subcategories?  
+2.	How many of them finally were successful?  
+3.	How much money did they aim for? How much did they really get?
+4.  For raising the funding, how long did they take? (period)
+5.	How is the development of projects on Kickstarter in these years, did the amount increase or decrease?   
+
+  
+    
+
+
+
+***
+
+
+## III. Libraries
+
+```{r library,echo=T,warning=FALSE,message=FALSE}
+library(tidyverse)
+library(ggthemes)
+library(lubridate)
+library(rworldmap)
+library(gplots)
+library(knitr)
+library(data.table)
+
+
+```
+  
+
+
+***
+
+
+## IV. Questions
+   
+#### Before the analysis, here is the general statement of the whole data document:  
+
+```{r read & present}
+ksdata <- read.csv("ks-projects-201801.csv")
+str(ksdata)
+```  
+  
+As you can see, this is a data frame with 378661 rows and 15 columns, including the names of projects, categories, sub-categories, pledged money, etc.  
+
+```{r missing value}
+sapply(ksdata, function(x) sum(is.na(x)))
+
+```
+NA value only exist in column "usd.pledged". However, this column is not useful since there is already another column called "usd_pleged_real", which contains the information about pledged money we need.   
+
+```{r change column names}
+ksdata <- ksdata[,-13]
+colnames(ksdata)[13] <- "pledged_usd"
+colnames(ksdata)[14] <- "goal_usd"
+
+```  
+<br />
+
+Let's start with the first question. 
+
+### 1.	How many projects exist on Kickstarter? What’s the main categories and the subcategories?  
+
+In the data, from 2009 to 2018.01, there is 378661 projects recorded.  
+
+We can use ggplot package to show the chart of summary of the categories of projects.  
+
+
+```{r categories, fig.width=12}
+catesum <- ksdata %>% 
+group_by(main_category) %>% 
+summarize(count=n()) %>% 
+arrange(desc(count))
+catesum$main_category <- factor(catesum$main_category, levels=catesum$main_category)
+
+ggplot(catesum, aes(main_category, count, fill=count)) + geom_bar(stat="identity") + ggtitle("Projects by Main Category") + xlab("Project Main Category") + ylab("Amount") + geom_text(aes(label=count), vjust=-0.5) + theme_classic() + theme(plot.title=element_text(hjust=0.5), axis.title=element_text(size=12, face="bold"), axis.text.x=element_text(size=12, angle=90), legend.position="null") + scale_fill_gradient(low="skyblue2",high = "deepskyblue4")
+
+```  
+  
+  
+*Film & Video* seems to be the most popular main category on Kickstarter. *Dance* is the least one.    
+
+Next is the subcategory. However, it contains too many subcategories, we only present the main 15 subcategories instead.  
+  
+
+
+```{r subcategories, fig.width=12}
+subcate <- ksdata %>% 
+group_by(category) %>% 
+summarize(count=n()) %>% 
+arrange(desc(count)) 
+
+subcate$category <- factor(subcate$category, levels=subcate$category)
+ggplot(head(subcate, 15), aes(category, count, fill=count)) + geom_bar(stat="identity") + ggtitle("Projects by Subcategory") + xlab("Project Subcategory") + ylab("Amount") + geom_text(aes(label=count), vjust=-0.5) + theme_classic() + theme(plot.title=element_text(hjust=0.5), axis.title=element_text(size=12, face="bold"), axis.text.x=element_text(size=12, angle=90), legend.position="null") + scale_fill_gradient(low="skyblue2", high="deepskyblue4")
+``` 
+  
+  
+For subcategories, *Product Design* is the most popular subcategory here, stemming from the category of Design.
+
+<br/>
+  
+### 2. How many of them finally were successful?
+```{r successful rate}
+sucrate <- prop.table(table(ksdata$state))*100
+sucrate
+```  
+  
+  
+Only around **35.38%** of projects  were successful.
+
+<br/>
+
+### 3. How much money did they aim for? How much did they get?  
+
+For these projects failed, let's see how much money did they ask for.  
+```{r goal failed}
+kable(head(ksdata[order(-ksdata$goal_usd), c(2,3,14,10)], 15))
+```  
+  
+  
+It is obvious that lots of projects with exaggerating money requirement (more than 10,000,000 usd) failed in the end. But how about the successful projects, what's the highest price they required for?  
+
+
+```{r goal success}
+goaltops <- ksdata[ksdata$state=="successful",]
+kable(head(goaltops[order(-goaltops$goal_usd), c(2,3,14,10)], 15))
+```  
+
+Even the highest one, Elite: Dangerous is just 2,015,609 usd. Most of them is around 2,000,000 usd. Also, in this list, video games is the category most of which got highest funded. (Though this is the goal of project, but for those projects succeed, goals should be equal to or even less than how much they actually got funded.)  
+
+How about the general state of real pledged amount of each main categories?
+
+```{r real pledged,fig.width=14}
+p <- ggplot(ksdata, aes(main_category, pledged_usd, fill=main_category))
+p + geom_boxplot() + theme_classic() +  
+ggtitle("Amount Pledged in Different Categories") +
+xlab("Project Category") + 
+ylab("Amount Pledged (USD)") + 
+theme(plot.title=element_text(size=15, face="bold", hjust=0.5), axis.title=element_text(size=12, face="bold"), axis.text.x=element_text(size=12, angle=90), legend.position="null") + coord_cartesian(ylim=c(0,15000))
+
+```    
+This time it is a little different. Actually we can see that *Design* instead of Film & Video, which contains most projects on Kickstarter, raised most money compared to any other categories. Then it's *Games*, in which projects have highest pledged goals and also have high rate to succeed.
+  
+  
+<br/>  
+
+### 4.  For raising the funding, how long did they take? (period)  
+
+```{r days, include=F}
+ksdata$launch_date <- as.Date(ksdata$launched,"%Y-%m-%d")
+ksdata$deadline_date <- as.Date(ksdata$deadline, "%Y-%m-%d")
+# or ksdata$launch_date <- ymd_hms(ksdata$launched)
+ksdata$days <- as.integer(ksdata$deadline_date - ksdata$launch_date)
+
+ksdata$length <- interval(ksdata$launch_date, ksdata$deadline_date) %/% days(1)
+
+
+```  
+
+Sorry this part I need more time to figure it out so I didn't finish it. Skip to next part.
+
+<br/> 
+
+
+### 5.	How is the development of projects on Kickstarter in these years, did the amount increase or decrease?   
+
+```{r year}
+ksdata$launch_year <- substr(ksdata$launched, 1,4)
+table(ksdata$launch_year)
+ggplot(ksdata,aes(ksdata$launch_year)) + 
+geom_bar(fill="deepskyblue4") + 
+theme_classic() +
+xlab("Year")+
+ylab("Amount")+
+ggtitle("Change of Projects Number on Kickstarter") + 
+theme(plot.title=element_text(size=15,face="bold", hjust=0.5), axis.title=element_text(size=12, face="bold"), axis.text.x=element_text(size=12, angle=0), legend.position="null") 
+```  
+  
+  
+<br/>  
+From the tendency, it seems that the number of projects on Kickstarter increased untill 2015, then it went down and kept a balance around 50,000.
+
+<br/>  
+
+***
+
+
+## VI. Conclusion  
+  
+Kickstarter is still a good choice for anyone who wants to raise money for his or her creative ideas. But if you plan to use it, remember to consider your requirement carefully.
+
+  
+Thank you for reading!
+
+  
+  
+      
+      
+![ ](http://m.qpic.cn/psb?/V14GfakW1du8PG/OuvW680jom4hkiX18Ea.tY9OlgdRCOUR8Y6LqMAkPco!/b/dFQBAAAAAAAA&bo=IAOQAQAAAAADF4A!&rf=viewer_4&t=5)
